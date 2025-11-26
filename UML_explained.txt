@@ -1,0 +1,158 @@
+
+
+
+@startuml
+
+' Style configuration
+skinparam classAttributeIconSize 0
+skinparam class {
+    BackgroundColor White
+    ArrowColor Black
+    BorderColor Black
+}
+
+' 1. Classe pour gérer l'API Binance (Requis: BinanceClient)
+class BinanceClient {
+    - api_key : str
+    - secret_key : str
+    - testnet : bool
+    + __init__(api_key: str, secret_key: str, testnet: bool)
+    + fetch_historical_data(symbol: str, interval: str) : DataFrame
+    + get_current_price(symbol: str) : float
+}
+
+' 2. Classe abstraite pour la stratégie (Requis: TradingStrategy)
+abstract class TradingStrategy {
+    + {abstract} calculate_indicators(data: DataFrame) : DataFrame
+    + {abstract} check_signal(data: DataFrame) : str
+}
+
+' 3. Implémentation concrète (Requis: MovingAverageStrategy)
+class MovingAverageStrategy {
+    - short_window : int
+    - long_window : int
+    + __init__(short_window: int, long_window: int)
+    + calculate_indicators(data: DataFrame) : DataFrame
+    + check_signal(data: DataFrame) : str
+}
+
+' 4. Classe pour le portefeuille simulé (Requis: Portfolio)
+class Portfolio {
+    - usdt_balance : float
+    - crypto_balance : float
+    - trade_history : list
+    + __init__(initial_capital: float)
+    + update_balance(price: float, quantity: float, side: str) : void
+    + execute_buy(price: float) : float
+    + execute_sell(price: float) : float
+    + get_total_value_usdt(current_price: float) : float
+    + save_trades_to_file(filename: str) : void
+}
+
+' 5. Classe principale de l'application (Requis: App)
+class App {
+    - is_running : bool
+    - pair : str
+    - capital : float
+    - binance_client : BinanceClient
+    - portfolio : Portfolio
+    - strategy : TradingStrategy
+    - data_manager : DataManager
+    + __init__()
+    + configure_settings(api_key, secret, pair, capital, strategy_params) : void
+    + start_bot() : void
+    + stop_bot() : void
+    + run_loop() : void
+    + display_status() : void
+}
+
+class DataManager {
+    - json_path
+    + set_json_path()
+    + charge_data() : json
+    + save_data() : void
+}
+' Relations (Héritage et Associations)
+
+' MovingAverageStrategy hérite de TradingStrategy [cite: 46]
+MovingAverageStrategy --|> TradingStrategy : inherits
+
+' App utilise (compose) les autres classes [cite: 48]
+App *-- BinanceClient : uses
+App *-- Portfolio : manages
+App *-- TradingStrategy : uses
+App *-- DataManager : uses
+
+@enduml
+
+
+## explainations : 
+1. Class BinanceClient
+Cette classe gère exclusivement la communication avec l'API de Binance.
+
+
+Attributs : Clés API (nécessaires pour le Testnet).
+
+
+
+Méthodes :
+
+
+fetch_historical_data : Récupère l'historique des prix pour calculer les moyennes mobiles.
+
+
+get_current_price : Obtient le prix en temps réel à intervalles réguliers.
+
+2. Class Portfolio
+Cette classe gère le "Paper Trading" (simulation) et la persistance des données.
+
+
+
+Attributs : Suit le solde en USDT et en crypto (ex: BTC) séparément.
+
+Méthodes :
+
+
+execute_buy / execute_sell : Simule l'achat (tout le capital dispo) ou la vente (toute la position crypto).
+
+
+get_total_value_usdt : Calcule la valeur totale (Capital + (Crypto * Prix actuel)) pour l'affichage.
+
+
+save_trades_to_file : Enregistre les opérations dans un fichier JSON ou CSV (requis fonctionnel).
+
+
+3. Class TradingStrategy (Abstraite)
+C'est la classe de base abstraite requise pour structurer la logique de trading.
+
+Méthode check_signal : Définit le contrat que toutes les stratégies futures devront respecter (renvoie un signal 'BUY', 'SELL' ou 'HOLD').
+
+4. Class MovingAverageStrategy
+C'est l'implémentation concrète de la stratégie demandée.
+
+
+
+Attributs : short_window (ex: 10) et long_window (ex: 30).
+
+
+Méthodes :
+
+Implémente la logique de croisement : Achat si Moyenne Courte > Moyenne Longue, Vente si Moyenne Courte < Moyenne Longue.
+
+Utilise probablement pandas ou numpy pour les calculs internes.
+
+5. Class App (Interface)
+C'est la classe principale qui orchestre le tout et interagit avec l'utilisateur.
+
+Responsabilités :
+
+Configure les paramètres (Paire, Capital, Clés) via la console ou GUI.
+
+
+Contient la boucle principale (run_loop) qui appelle l'API, vérifie la stratégie et exécute les ordres via le Portfolio.
+
+Affiche les informations en temps réel (Solde, Logs).
+
+6. Class DataManager 
+
+responsable de mettre en forme, stoquer et charger les données dans le fichier json
