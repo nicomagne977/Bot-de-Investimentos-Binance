@@ -1,106 +1,70 @@
-"""
-Moving Average strategy implementation module.
+"""Moving Average Crossover Trading Strategy Module"""
 
-This module contains the concrete implementation of a moving average crossover strategy
-for automated trading on the Binance exchange.
-"""
 
+import pandas as pd
+from typing import Any
 from trading_strategy import TradingStrategy
 
 
 class MovingAverageStrategy(TradingStrategy):
     """
-    Trading strategy based on moving average crossover signals.
+    Moving Average Crossover strategy implementation.
 
-    This class implements a concrete trading strategy that uses two moving averages
-    (short and long term) to generate buy and sell signals. The strategy generates
-    a BUY signal when the short-term moving average crosses above the long-term
-    moving average, and a SELL signal when it crosses below.
-
-    Attributes:
-        _short_window (int): The period for the short-term moving average (e.g., 10).
-        _long_window (int): The period for the long-term moving average (e.g., 30).
+    BUY signal when short MA crosses above long MA (golden cross).
+    SELL signal when short MA crosses below long MA (death cross).
     """
 
-    def __init__(self, short_window: int, long_window: int) -> None:
-        """
-        Initialize the MovingAverageStrategy with window parameters.
-
-        Args:
-            short_window (int): The number of periods for the short-term moving average.
-            long_window (int): The number of periods for the long-term moving average.
-        """
+    def __init__(self, short_window: int = 10, long_window: int = 30) -> None:
+        if short_window >= long_window:
+            raise ValueError("short_window should be smaller than long_window")
         self._short_window = short_window
         self._long_window = long_window
 
     @property
     def short_window(self) -> int:
-        """
-        Get the short-term moving average window.
-
-        Returns:
-            int: The number of periods for the short-term moving average.
-        """
         return self._short_window
-
-    @short_window.setter
-    def short_window(self, value: int) -> None:
-        """
-        Set the short-term moving average window.
-
-        Args:
-            value (int): The new short window period.
-        """
-        self._short_window = value
 
     @property
     def long_window(self) -> int:
-        """
-        Get the long-term moving average window.
-
-        Returns:
-            int: The number of periods for the long-term moving average.
-        """
         return self._long_window
 
-    @long_window.setter
-    def long_window(self, value: int) -> None:
+    def calculate_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
         """
-        Set the long-term moving average window.
-
-        Args:
-            value (int): The new long window period.
+        Expects `data` with a 'close' column.
+        Adds:
+         - 'short_ma'  : short moving average
+         - 'long_ma'   : long moving average
+        Returns the DataFrame with new columns.
         """
-        self._long_window = value
+        if 'close' not in data.columns:
+            raise ValueError("DataFrame must contain 'close' column")
 
-    def calculate_indicators(self, data):
+        data = data.copy()
+        data['short_ma'] = data['close'].rolling(window=self._short_window, min_periods=1).mean()
+        data['long_ma'] = data['close'].rolling(window=self._long_window, min_periods=1).mean()
+        return data
+
+    def check_signal(self, data: pd.DataFrame) -> str:
         """
-        Calculate short and long-term moving averages.
-
-        Computes the moving averages using the configured window periods
-        for the provided price data. Uses pandas or numpy internally for calculations.
-
-        Args:
-            data: A pandas DataFrame containing OHLC price data.
-
-        Returns:
-            DataFrame: The input data with 'short_ma' and 'long_ma' columns added.
+        Determine signal based on most recent two rows (to detect crossover).
+        Returns 'BUY', 'SELL' or 'HOLD'.
         """
-        pass
+        if data.shape[0] < 2:
+            return 'HOLD'
 
-    def check_signal(self, data) -> str:
-        """
-        Generate a trading signal based on moving average crossover.
+        df = data.dropna(subset=['short_ma', 'long_ma']).copy()
+        if df.shape[0] < 2:
+            return 'HOLD'
 
-        Implements the moving average crossover logic:
-        - Returns 'BUY' if short MA > long MA (bullish signal)
-        - Returns 'SELL' if short MA < long MA (bearish signal)
-        - Returns 'HOLD' otherwise
+        last = df.iloc[-1]
+        prev = df.iloc[-2]
 
-        Args:
-            data: A pandas DataFrame containing price data and moving averages.
+        # Golden cross: prev short <= prev long and last short > last long
+        if (prev['short_ma'] <= prev['long_ma']) and (last['short_ma'] > last['long_ma']):
+            return 'BUY'
 
-        Returns:
-            str: The trading signal - 'BUY', 'SELL', or 'HOLD'.
-        """
-        pass
+        # Death cross: prev short >= prev long and last short < last long
+        if (prev['short_ma'] >= prev['long_ma']) and (last['short_ma'] < last['long_ma']):
+            return 'SELL'
+
+        return 'HOLD'
