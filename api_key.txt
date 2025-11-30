@@ -1,0 +1,6 @@
+HMAC-SHA-256 Key registered
+Save these values right now. They won't be shown ever again!
+
+API Key: ph673XRE278sLWBuanwx6wkKN8kJBr2qD65V4xg9EskGmVcVGX0O0X5xuTDJebeC
+
+Secret Key: dzpYQHHnixc4oArJW6XNvKdiescbpbZtqVlUoP6lLvVQ248RyVh73Ksg7QOhD6f6
