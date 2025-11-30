@@ -1,97 +1,215 @@
-""" Portfolio Management Module """
+"""
+Portfolio management module for simulated trading.
 
-from typing import Dict, Any
+This module handles paper trading simulation and trade history persistence,
+tracking balances and managing buy/sell operations.
+"""
+
+from typing import List, Dict, Any
+import json
 from datetime import datetime
 
 
 class Portfolio:
     """
-    Simulated portfolio for paper trading.
-    Tracks balances and delegates trade storage to DataManager.
+    Manages paper trading (simulated trading) and trade history persistence.
+
+    This class simulates a trading portfolio by tracking USDT balance and
+    cryptocurrency holdings separately. It records all transactions and
+    provides methods for calculating portfolio value.
+
+    Attributes:
+        _usdt_balance (float): Current balance in USDT (fiat currency).
+        _crypto_balance (float): Current balance in cryptocurrency (e.g., BTC).
+        _trade_history (list): List of all executed trades for record-keeping.
     """
 
-    def __init__(self, initial_usdt: float, data_manager, asset_symbol: str = "BTC"):
+    def __init__(self, initial_capital: float) -> None:
         """
+        Initialize the Portfolio with an initial capital amount.
+
         Args:
-            initial_usdt (float): Starting capital
-            data_manager (DataManager): instance handling JSON file persistence
-            asset_symbol (str): Crypto asset being traded (e.g., BTC)
+            initial_capital (float): The starting capital in USDT.
         """
-        self.usdt = float(initial_usdt)
-        self.asset = 0.0
-        self.asset_symbol = asset_symbol.upper()
-        self.trades = []  # in-memory record
+        self._usdt_balance = initial_capital
+        self._crypto_balance = 0.0
+        self._trade_history = []
 
-        self.data_manager = data_manager  # dependency injection ✔
-
-    # -----------------------------------------------------------
-
-    def _create_trade_dict(self, trade_type: str, price: float, quantity: float) -> Dict[str, Any]:
+    @property
+    def usdt_balance(self) -> float:
         """
-        Creates a standardized trade dictionary.
+        Get the current USDT balance.
+
+        Returns:
+            float: The current USDT balance.
         """
-        return {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "type": trade_type,
-            "price": price,
-            "quantity": quantity,
-            "asset": self.asset_symbol,
-            "usdt_after": self.usdt,
-            "asset_after": self.asset,
-        }
+        return self._usdt_balance
 
-    def _record_trade(self, trade: Dict[str, Any]) -> None:
+    @usdt_balance.setter
+    def usdt_balance(self, value: float) -> None:
         """
-        Saves a trade through DataManager + keeps a local copy.
+        Set the USDT balance.
+
+        Args:
+            value (float): The new USDT balance.
         """
-        self.trades.append(trade)
-        self.data_manager.append_trade(trade)
+        self._usdt_balance = value
 
-    # -----------------------------------------------------------
-
-    def buy_all_in(self, price: float) -> Dict[str, Any]:
+    @property
+    def crypto_balance(self) -> float:
         """
-        Use all USDT to buy crypto.
+        Get the current cryptocurrency balance.
+
+        Returns:
+            float: The current cryptocurrency balance (e.g., BTC quantity).
         """
-        if self.usdt <= 0:
-            raise RuntimeError("No USDT to buy with.")
+        return self._crypto_balance
 
-        quantity = self.usdt / price
-
-        # update balances
-        self.asset += quantity
-        self.usdt = 0.0
-
-        trade = self._create_trade_dict("BUY", price, quantity)
-        self._record_trade(trade)
-
-        return trade
-
-    # -----------------------------------------------------------
-
-    def sell_all(self, price: float) -> Dict[str, Any]:
+    @crypto_balance.setter
+    def crypto_balance(self, value: float) -> None:
         """
-        Sell all crypto holdings and convert to USDT.
-        """
-        if self.asset <= 0:
-            raise RuntimeError("No asset to sell.")
+        Set the cryptocurrency balance.
 
-        quantity = self.asset
+        Args:
+            value (float): The new cryptocurrency balance.
+        """
+        self._crypto_balance = value
+
+    @property
+    def trade_history(self) -> List[Dict[str, Any]]:
+        """
+        Get the complete trade history.
+
+        Returns:
+            list: A list of all executed trades.
+        """
+        return self._trade_history
+
+    @trade_history.setter
+    def trade_history(self, value: List[Dict[str, Any]]) -> None:
+        """
+        Set the trade history.
+
+        Args:
+            value (list): The new trade history list.
+        """
+        self._trade_history = value
+
+    def update_balance(self, price: float, quantity: float, side: str) -> None:
+        """
+        Update portfolio balances based on a trade.
+
+        Updates both USDT and cryptocurrency balances depending on whether
+        a buy or sell operation was executed.
+
+        Args:
+            price (float): The price per unit of cryptocurrency.
+            quantity (float): The quantity of cryptocurrency traded.
+            side (str): The side of the trade - 'BUY' or 'SELL'.
+        """
+        side = side.upper()
+        timestamp = datetime.utcnow().isoformat() + "Z"
+        if side == "BUY":
+            cost = price * quantity
+            self._usdt_balance -= cost
+            self._crypto_balance += quantity
+            trade = {
+                "side": "BUY",
+                "price": price,
+                "quantity": quantity,
+                "cost": cost,
+                "timestamp": timestamp,
+            }
+            self._trade_history.append(trade)
+        elif side == "SELL":
+            proceeds = price * quantity
+            self._crypto_balance -= quantity
+            self._usdt_balance += proceeds
+            trade = {
+                "side": "SELL",
+                "price": price,
+                "quantity": quantity,
+                "proceeds": proceeds,
+                "timestamp": timestamp,
+            }
+            self._trade_history.append(trade)
+        else:
+            raise ValueError("side must be 'BUY' or 'SELL'")
+
+    def execute_buy(self, price: float) -> float:
+        """
+        Execute a buy order using all available USDT.
+
+        Simulates buying cryptocurrency with all available capital at the given price.
+
+        Args:
+            price (float): The current price of the cryptocurrency.
+
+        Returns:
+            float: The quantity of cryptocurrency purchased.
+        """
+        if price <= 0:
+            return 0.0
+        if self._usdt_balance <= 0:
+            return 0.0
+
+        quantity = self._usdt_balance / price
+        # update balances and record trade
+        self.update_balance(price=price, quantity=quantity, side="BUY")
+        return quantity
+
+    def execute_sell(self, price: float) -> float:
+        """
+        Execute a sell order of all cryptocurrency holdings.
+
+        Simulates selling all held cryptocurrency at the given price
+        and converting to USDT.
+
+        Args:
+            price (float): The current price of the cryptocurrency.
+
+        Returns:
+            float: The amount of USDT received from the sale.
+        """
+        if price <= 0:
+            return 0.0
+        if self._crypto_balance <= 0:
+            return 0.0
+
+        quantity = self._crypto_balance
         proceeds = quantity * price
+        self.update_balance(price=price, quantity=quantity, side="SELL")
+        return proceeds
 
-        # update balances
-        self.asset = 0.0
-        self.usdt += proceeds
-
-        trade = self._create_trade_dict("SELL", price, quantity)
-        self._record_trade(trade)
-
-        return trade
-
-    # -----------------------------------------------------------
-
-    def portfolio_value(self, current_price: float) -> float:
+    def get_total_value_usdt(self, current_price: float) -> float:
         """
-        Total paper trading value in USDT.
+        Calculate the total portfolio value in USDT.
+
+        Computes the total portfolio value by adding USDT balance to the
+        current value of cryptocurrency holdings at the given price.
+        This is used for display and performance tracking.
+
+        Args:
+            current_price (float): The current price of the cryptocurrency.
+
+        Returns:
+            float: The total portfolio value in USDT.
         """
-        return self.usdt + self.asset * current_price
+        return self._usdt_balance + (self._crypto_balance * current_price)
+
+    def save_trades_to_file(self, filename: str) -> None:
+        """
+        Save all trade history to a file.
+
+        Records all executed transactions to a file (JSON or CSV format)
+        for later analysis and record-keeping. This is a required functional
+        requirement for maintaining trading history.
+
+        Args:
+            filename (str): The path and filename where trades will be saved.
+        """
+        try:
+            with open(filename, "w", encoding="utf-8") as f:
+                json.dump({"trades": self._trade_history}, f, indent=2)
+        except Exception:
+            raise
