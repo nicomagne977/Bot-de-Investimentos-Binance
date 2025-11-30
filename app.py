@@ -39,12 +39,12 @@ class LiveWindow:
         client: BinanceClient,
         pair: str,
         portfolio: Optional[Portfolio] = None,
-        update_interval: int = 60,
+        update_interval: int = 30,
     ):
         self.client = client
         self.pair = pair
         self.portfolio = portfolio
-        self.update_interval = 20
+        self.update_interval = update_interval
         self._thread = None
         self._stop_event = threading.Event()
         self._root = None
@@ -95,10 +95,10 @@ class LiveWindow:
         self._crypto_lbl = ttk.Label(frm, text="-")
         self._crypto_lbl.grid(column=1, row=6, sticky="w")
 
-        # Trade history area
-        ttk.Label(frm, text="Trade History:").grid(column=0, row=5, sticky="nw")
+        # Trade history area (placed below balances)
+        ttk.Label(frm, text="Trade History:").grid(column=0, row=7, sticky="nw")
         self._history_box = tk.Text(frm, width=40, height=8, wrap="none")
-        self._history_box.grid(column=0, row=6, columnspan=2, pady=(6, 0))
+        self._history_box.grid(column=0, row=8, columnspan=2, pady=(6, 0))
         self._history_box.insert("1.0", "No trades yet.\n")
         self._history_box.config(state="disabled")
 
