@@ -6,6 +6,8 @@ of the trading bot including configuration, execution, and real-time status disp
 """
 
 from typing import Optional, Dict, Any
+import json
+from pathlib import Path
 from binance_client import BinanceClient
 from portfolio import Portfolio
 from trading_strategy import TradingStrategy
@@ -227,7 +229,18 @@ class App:
 
         # Configure data manager
         json_filename = strategy_params.get("json_path", "trading_data.json")
-        self._data_manager.set_json_path(json_filename)
+
+        # Ensure JSON data file exists in the current working directory and use a relative path
+        data_file = Path(json_filename)
+        if not data_file.exists():
+            try:
+                data_file.write_text(json.dumps({"trades": []}, indent=2))
+                print(f"Created data file: {data_file}")
+            except Exception as e:
+                print(f"Warning: could not create data file '{data_file}': {e}")
+
+        # Configure DataManager with the (relative) path
+        self._data_manager.set_json_path(str(data_file))
 
         print(f"\n✓ Bot configuration completed successfully!")
         print(f"  Trading Pair: {self._pair}")
@@ -356,15 +369,8 @@ class App:
             except ValueError:
                 print("Error: Please enter a valid integer.")
 
-        # [5/5] Collect data storage path
-        print("\n[5/5] Data Storage")
-        print("-" * 60)
-        json_path = (
-            input(
-                "Enter the JSON file path for trade history (default: trading_data.json): "
-            ).strip()
-            or "trading_data.json"
-        )
+        # Data storage: use a relative default file name `json.data` in current directory
+        json_path = "json.data"
 
         # Prepare strategy parameters dictionary
         strategy_params = {
@@ -381,6 +387,37 @@ class App:
             "capital": capital,
             "strategy_params": strategy_params,
         }
+
+    def action_menu(self) -> None:
+        """
+        Interactive action menu loop for the user.
+
+        Presents a small menu of actions the user can perform. For now the menu
+        supports two actions:
+            1) Start bot - calls `start_bot()`
+            2) Exit program - breaks the loop and returns to the caller
+
+        This method keeps prompting until the user chooses to exit.
+        """
+        while True:
+            print("\n" + "=" * 40)
+            print("Available actions:")
+            print("  1) Start bot")
+            print("  2) Exit program")
+            print("=" * 40)
+            choice = input("Choose an action (1-2): ").strip()
+
+            if choice == "1":
+                print("Starting the bot...")
+                try:
+                    self.start_bot()
+                except Exception as e:
+                    print(f"Error when starting bot: {e}")
+            elif choice == "2":
+                print("Exiting program. Goodbye.")
+                break
+            else:
+                print("Invalid choice, please enter 1 or 2.")
 
 
 def main() -> None:
@@ -400,12 +437,8 @@ def main() -> None:
         strategy_params=config_data["strategy_params"],
     )
     print("=" * 60)
-
-    # Display menu for next actions
-    print("\nBot configuration complete. You can now:")
-    print("  • Call app.start_bot() to begin trading")
-    print("  • Call app.display_status() to view current status")
-    print("  • Call app.stop_bot() to stop the trading bot")
+    # Launch interactive action menu
+    app.action_menu()
 
 
 if __name__ == "__main__":
