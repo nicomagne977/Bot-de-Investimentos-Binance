@@ -44,7 +44,7 @@ class LiveWindow:
         self.client = client
         self.pair = pair
         self.portfolio = portfolio
-        self.update_interval = update_interval
+        self.update_interval = 20
         self._thread = None
         self._stop_event = threading.Event()
         self._root = None
@@ -86,6 +86,14 @@ class LiveWindow:
         ttk.Label(frm, text="Last Close:").grid(column=0, row=4, sticky="w")
         self._lastclose_lbl = ttk.Label(frm, text="-")
         self._lastclose_lbl.grid(column=1, row=4, sticky="w")
+        # Balances
+        ttk.Label(frm, text="USDT Balance:").grid(column=0, row=5, sticky="w")
+        self._usdt_lbl = ttk.Label(frm, text="-")
+        self._usdt_lbl.grid(column=1, row=5, sticky="w")
+
+        ttk.Label(frm, text="Crypto Balance:").grid(column=0, row=6, sticky="w")
+        self._crypto_lbl = ttk.Label(frm, text="-")
+        self._crypto_lbl.grid(column=1, row=6, sticky="w")
 
         # Trade history area
         ttk.Label(frm, text="Trade History:").grid(column=0, row=5, sticky="nw")
@@ -155,6 +163,14 @@ class LiveWindow:
                 else:
                     self._history_box.insert("1.0", "No trades yet.\n")
                 self._history_box.config(state="disabled")
+                # update balances display
+                try:
+                    self._usdt_lbl.config(
+                        text=f"{self.portfolio.usdt_balance:.2f} USDT"
+                    )
+                    self._crypto_lbl.config(text=f"{self.portfolio.crypto_balance:.8f}")
+                except Exception:
+                    pass
         except Exception:
             pass
 
