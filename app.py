@@ -15,6 +15,7 @@ from data_manager import DataManager
 import threading
 import time
 from datetime import datetime
+import pandas as pd
 
 try:
     import tkinter as tk
@@ -405,7 +406,7 @@ class App:
         )
 
         # Configure data manager
-        json_filename = strategy_params.get("json_path", "trading_data.json")
+        json_filename = strategy_params.get("json_path", "trades.json")
 
         # Ensure JSON data file exists in the current working directory and use a relative path
         data_file = Path(json_filename)
@@ -506,7 +507,14 @@ class App:
             else None
         )
         # apply to portfolio (simulate execution)
-        purchased_qty = self._portfolio.execute_buy(price)
+        purchased_qty = self._portfolio.execute_buy(price, usdt, mode="auto")
+        # trade = {
+        #     "type": "BUY",
+        #     "price": price,
+        #     "quantity": purchased_qty,
+        #     "timestamp": datetime.utcnow().isoformat() + "Z",
+        # }
+        # self._data_manager.append_trade(trade)
         print(f"Bought {purchased_qty:.8f} {self._pair} at {price:.8f} (simulated)")
 
     def sell_all(self) -> None:
@@ -537,7 +545,14 @@ class App:
             if self._binance_client
             else None
         )
-        proceeds = self._portfolio.execute_sell(price)
+        proceeds = self._portfolio.execute_sell(price, mode="auto")
+        # trade = {
+        #     "type": "SELL",
+        #     "price": price,
+        #     "quantity": proceeds,
+        #     "timestamp": datetime.utcnow().isoformat() + "Z",
+        # }
+        # self._data_manager.append_trade(trade)
         print(f"Sold {crypto:.8f} {self._pair} for {proceeds:.2f} USDT (simulated)")
 
     def stop_bot(self) -> None:
@@ -577,20 +592,42 @@ class App:
 
         This loop continues until the bot is stopped.
         """
-        # Fetch historical data once at start (optional)
-        try:
-            if self._binance_client and self._pair:
-                _ = self._binance_client.fetch_historical_data(self._pair, "1m")
-        except Exception:
-            pass
+        print("Main trading loop started.")
 
-        # Background loop - reserved for non-GUI periodic tasks
         while self._is_running:
-            # Currently GUI handles price display. Sleep and check is_running
-            for _ in range(60):
-                if not self._is_running:
-                    break
-                time.sleep(1)
+            try:
+                # 1. Fetch latest price
+                price = self._binance_client.get_current_price(self._pair)
+                if price is None or price <= 0:
+                    print("Warning: Could not fetch price. Retrying...")
+                    time.sleep(5)
+                    continue
+
+                df = pd.DataFrame({"close": price}, index=[pd.Timestamp.now()])
+                df = self._strategy.calculate_indicators(df)
+                # 2. Send price to strategy
+                self._strategy.update(price)
+
+                # 3. Ask strategy for signal
+                signal = self._strategy.check_signal(df)
+
+                # 4. Execute trades based on signal
+                if signal == "BUY":
+                    print(f"[SIGNAL] BUY triggered at {price:.8f}")
+                    self.buy_all()
+
+                elif signal == "SELL":
+                    print(f"[SIGNAL] SELL triggered at {price:.8f}")
+                    self.sell_all()
+
+                else:
+                    print(f"[SIGNAL] HOLD at {price:.8f}")
+
+            except Exception as e:
+                print(f"Error in run_loop: {e}")
+
+            # 5. Wait before next iteration
+            time.sleep(10)  # run every 10 seconds (adjust later)
 
     def display_status(self) -> None:
         """
@@ -680,7 +717,7 @@ class App:
                 print("Error: Please enter a valid integer.")
 
         # Data storage: use a relative default file name `json.data` in current directory
-        json_path = "json.data"
+        json_path = "data.json"
 
         # Prepare strategy parameters dictionary
         strategy_params = {

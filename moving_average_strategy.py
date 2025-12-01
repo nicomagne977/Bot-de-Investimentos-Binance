@@ -1,6 +1,5 @@
 """Moving Average Crossover Trading Strategy Module"""
 
-
 import pandas as pd
 from typing import Any
 from trading_strategy import TradingStrategy
@@ -19,6 +18,7 @@ class MovingAverageStrategy(TradingStrategy):
             raise ValueError("short_window should be smaller than long_window")
         self._short_window = short_window
         self._long_window = long_window
+        self.prices = []
 
     @property
     def short_window(self) -> int:
@@ -36,12 +36,16 @@ class MovingAverageStrategy(TradingStrategy):
          - 'long_ma'   : long moving average
         Returns the DataFrame with new columns.
         """
-        if 'close' not in data.columns:
+        if "close" not in data.columns:
             raise ValueError("DataFrame must contain 'close' column")
 
         data = data.copy()
-        data['short_ma'] = data['close'].rolling(window=self._short_window, min_periods=1).mean()
-        data['long_ma'] = data['close'].rolling(window=self._long_window, min_periods=1).mean()
+        data["short_ma"] = (
+            data["close"].rolling(window=self._short_window, min_periods=1).mean()
+        )
+        data["long_ma"] = (
+            data["close"].rolling(window=self._long_window, min_periods=1).mean()
+        )
         return data
 
     def check_signal(self, data: pd.DataFrame) -> str:
@@ -50,21 +54,31 @@ class MovingAverageStrategy(TradingStrategy):
         Returns 'BUY', 'SELL' or 'HOLD'.
         """
         if data.shape[0] < 2:
-            return 'HOLD'
+            return "HOLD"
 
-        df = data.dropna(subset=['short_ma', 'long_ma']).copy()
+        df = data.dropna(subset=["short_ma", "long_ma"]).copy()
         if df.shape[0] < 2:
-            return 'HOLD'
+            return "HOLD"
 
         last = df.iloc[-1]
         prev = df.iloc[-2]
 
         # Golden cross: prev short <= prev long and last short > last long
-        if (prev['short_ma'] <= prev['long_ma']) and (last['short_ma'] > last['long_ma']):
-            return 'BUY'
+        if (prev["short_ma"] <= prev["long_ma"]) and (
+            last["short_ma"] > last["long_ma"]
+        ):
+            return "BUY"
 
         # Death cross: prev short >= prev long and last short < last long
-        if (prev['short_ma'] >= prev['long_ma']) and (last['short_ma'] < last['long_ma']):
-            return 'SELL'
+        if (prev["short_ma"] >= prev["long_ma"]) and (
+            last["short_ma"] < last["long_ma"]
+        ):
+            return "SELL"
 
-        return 'HOLD'
+        return "HOLD"
+
+    def update(self, price: float):
+        self.prices.append(price)
+
+        if len(self.prices) > self.long_window:
+            self.prices.pop(0)

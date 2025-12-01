@@ -34,6 +34,7 @@ class Portfolio:
         self._usdt_balance = initial_capital
         self._crypto_balance = 0.0
         self._trade_history = []
+        self.asset = 0.0  # Quantity of cryptocurrency held
 
     @property
     def usdt_balance(self) -> float:
@@ -136,50 +137,73 @@ class Portfolio:
         else:
             raise ValueError("side must be 'BUY' or 'SELL'")
 
-    def execute_buy(self, price: float) -> float:
+    def execute_buy(self, price: float, amount_usdt=None, percent=None, mode="auto"):
         """
-        Execute a buy order using all available USDT.
-
-        Simulates buying cryptocurrency with all available capital at the given price.
-
-        Args:
-            price (float): The current price of the cryptocurrency.
-
-        Returns:
-            float: The quantity of cryptocurrency purchased.
+        Smart BUY function:
+        - mode="auto"   → all-in
+        - amount_usdt   → buy exact amount
+        - percent       → buy % of current USDT
         """
-        if price <= 0:
-            return 0.0
-        if self._usdt_balance <= 0:
-            return 0.0
 
-        quantity = self._usdt_balance / price
-        # update balances and record trade
-        self.update_balance(price=price, quantity=quantity, side="BUY")
+        # AUTO = all in
+        if mode == "auto":
+            amount_usdt = self._usdt_balance
+
+        # If percent is provided
+        elif percent is not None:
+            amount_usdt = self._usdt_balance * (percent / 100)
+
+        # If amount_usdt is provided → nothing to convert
+
+        # Safety
+        if amount_usdt is None:
+            raise ValueError("Provide amount_usdt, percent OR mode='auto'.")
+
+        if amount_usdt > self._usdt_balance:
+            raise RuntimeError("Not enough USDT to buy")
+
+        # Execute buy
+        quantity = amount_usdt / price
+        self.asset += quantity
+        self._usdt_balance -= amount_usdt
+
+        trade = self.update_balance(price, quantity, "BUY")
+        # self._record_trade(trade)
         return quantity
 
-    def execute_sell(self, price: float) -> float:
+    def execute_sell(self, price: float, quantity=None, percent=None, mode="auto"):
         """
-        Execute a sell order of all cryptocurrency holdings.
-
-        Simulates selling all held cryptocurrency at the given price
-        and converting to USDT.
-
-        Args:
-            price (float): The current price of the cryptocurrency.
-
-        Returns:
-            float: The amount of USDT received from the sale.
+        Smart SELL function:
+        - mode="auto"  → sell everything
+        - percent      → sell % of asset
+        - quantity     → sell exact amount
         """
-        if price <= 0:
-            return 0.0
-        if self._crypto_balance <= 0:
-            return 0.0
 
-        quantity = self._crypto_balance
+        # AUTO = sell all
+        if mode == "auto":
+            quantity = self.asset
+
+        # percent of asset
+        elif percent is not None:
+            quantity = self.asset * (percent / 100)
+
+        # If quantity is provided → nothing to convert
+
+        # Safety
+        if quantity is None:
+            raise ValueError("Provide quantity, percent OR mode='auto'.")
+
+        if quantity > self.asset:
+            raise RuntimeError("Not enough asset to sell")
+
+        # Execute sell
         proceeds = quantity * price
-        self.update_balance(price=price, quantity=quantity, side="SELL")
-        return proceeds
+        self.asset -= quantity
+        self._usdt_balance += proceeds
+
+        trade = self.update_balance(price, quantity, "SELL")
+        # 5self._record_trade(trade)
+        return quantity
 
     def get_total_value_usdt(self, current_price: float) -> float:
         """
