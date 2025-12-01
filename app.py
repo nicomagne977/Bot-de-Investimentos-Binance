@@ -620,7 +620,10 @@ class App:
                     time.sleep(5)
                     continue
 
-                df = pd.DataFrame({"close": price}, index=[pd.Timestamp.now()])
+                # df = pd.DataFrame({"close": price}, index=[pd.Timestamp.now()])
+                # df = self._binance_client.fetch_historical_data(self._pair, "1m")
+                # df = df[["close"]]
+                df = pd.DataFrame({"close": self._strategy.prices})
                 df = self._strategy.calculate_indicators(df)
                 # 2. Send price to strategy
                 self._strategy.update(price)
