@@ -40,12 +40,12 @@ class LiveWindow:
         client: BinanceClient,
         pair: str,
         portfolio: Optional[Portfolio] = None,
-        update_interval: int = 60,
+        update_interval: int = 1,
     ):
         self.client = client
         self.pair = pair
         self.portfolio = portfolio
-        self.update_interval = 20
+        self.update_interval = update_interval
         self._thread = None
         self._stop_event = threading.Event()
         self._root = None
@@ -96,10 +96,10 @@ class LiveWindow:
         self._crypto_lbl = ttk.Label(frm, text="-")
         self._crypto_lbl.grid(column=1, row=6, sticky="w")
 
-        # Trade history area
-        ttk.Label(frm, text="Trade History:").grid(column=0, row=5, sticky="nw")
+        # Trade history area (placed below balances)
+        ttk.Label(frm, text="Trade History:").grid(column=0, row=7, sticky="nw")
         self._history_box = tk.Text(frm, width=40, height=8, wrap="none")
-        self._history_box.grid(column=0, row=6, columnspan=2, pady=(6, 0))
+        self._history_box.grid(column=0, row=8, columnspan=2, pady=(6, 0))
         self._history_box.insert("1.0", "No trades yet.\n")
         self._history_box.config(state="disabled")
 
@@ -369,6 +369,7 @@ class App:
         pair: str,
         capital: float,
         strategy_params: Dict[str, Any],
+        initial_portfolio: Optional[Portfolio] = None,
     ) -> None:
         """
         Configure all bot settings and parameters.
@@ -392,8 +393,11 @@ class App:
         self._pair = pair
         self._capital = capital
 
-        # Initialize portfolio with the initial capital
-        self._portfolio = Portfolio(initial_capital=capital)
+        # Initialize portfolio with initial_portfolio if provided, else use capital
+        if initial_portfolio is not None:
+            self._portfolio = initial_portfolio
+        else:
+            self._portfolio = Portfolio(initial_capital=capital)
 
         # Initialize the trading strategy (MovingAverageStrategy)
         from moving_average_strategy import MovingAverageStrategy
@@ -422,7 +426,12 @@ class App:
 
         print(f"\n✓ Bot configuration completed successfully!")
         print(f"  Trading Pair: {self._pair}")
-        print(f"  Initial Capital: ${self._capital:.2f} USDT")
+        # Display initial capital based on portfolio state
+        try:
+            cap_display = self._portfolio.usdt_balance
+        except Exception:
+            cap_display = self._capital
+        print(f"  Initial Capital: ${cap_display:.2f} USDT")
         print(
             f"  Strategy: Moving Average (Short: {short_window}, Long: {long_window})"
         )
@@ -456,7 +465,7 @@ class App:
         if tk is not None:
             try:
                 self._live_window = LiveWindow(
-                    self._binance_client, self._pair, self._portfolio
+                    self._binance_client, self._pair, self._portfolio, update_interval=1
                 )
                 self._live_window.start()
             except Exception as e:
@@ -639,7 +648,7 @@ class App:
         """
         pass
 
-    def collect_user_input(self) -> Dict[str, Any]:
+    def collect_user_input(self, skip_capital: bool = False) -> Dict[str, Any]:
         """
         Collect all necessary configuration data from the user.
 
@@ -670,20 +679,24 @@ class App:
         print("-" * 60)
         trading_pair = input("Enter the trading pair (e.g., BTCUSDT): ").strip().upper()
 
-        # [3/5] Collect capital with validation
-        print("\n[3/5] Capital Configuration")
-        print("-" * 60)
-        while True:
-            try:
-                capital = float(
-                    input("Enter the initial capital in USDT (minimum $10): ")
-                )
-                if capital < 10:
-                    print("Error: Capital must be at least $10. Please try again.")
-                    continue
-                break
-            except ValueError:
-                print("Error: Please enter a valid number.")
+        # [3/5] Collect capital with validation (skip if using persisted data)
+        capital = None
+        if not skip_capital:
+            print("\n[3/5] Capital Configuration")
+            print("-" * 60)
+            while True:
+                try:
+                    capital = float(
+                        input("Enter the initial capital in USDT (minimum $10): ")
+                    )
+                    if capital < 10:
+                        print("Error: Capital must be at least $10. Please try again.")
+                        continue
+                    break
+                except ValueError:
+                    print("Error: Please enter a valid number.")
+        else:
+            print("\nUsing persisted portfolio data; skipping capital prompt.")
 
         # [4/5] Collect strategy parameters
         print("\n[4/5] Strategy Parameters (Moving Average)")
@@ -716,8 +729,8 @@ class App:
             except ValueError:
                 print("Error: Please enter a valid integer.")
 
-        # Data storage: use a relative default file name `json.data` in current directory
-        json_path = "data.json"
+        # Data storage: use a relative default file name `trades.json` in current directory
+        json_path = "trades.json"
 
         # Prepare strategy parameters dictionary
         strategy_params = {
@@ -792,21 +805,63 @@ def main() -> None:
     """Main entry point for the trading bot application."""
     app = App()
 
-    # Collect user input through the dedicated method
-    config_data = app.collect_user_input()
+    # Ensure data manager points to the expected file and load persisted state
+    json_path = "trades.json"
+    app.data_manager.set_json_path(json_path)
+    state = app.data_manager.charge_data()
 
-    # Configure the bot with the collected data
+    initial_portfolio = None
+    skip_capital = False
+    # If persisted state contains trades or balances, initialize portfolio from file
+    if state and (state.get("trades") and len(state.get("trades")) > 0):
+        from portfolio import Portfolio
+
+        initial_portfolio = Portfolio(initial_capital=0.0)
+        try:
+            usdt = state.get("usdt_balance")
+            crypto = state.get("crypto_balance")
+            if usdt is not None:
+                initial_portfolio.usdt_balance = float(usdt)
+            if crypto is not None:
+                initial_portfolio.crypto_balance = float(crypto)
+            initial_portfolio.trade_history = state.get("trades", [])
+            skip_capital = True
+            print(
+                "Loaded existing portfolio from trades.json; will skip capital prompt."
+            )
+        except Exception:
+            initial_portfolio = None
+
+    # Collect user input through the dedicated method
+    config_data = app.collect_user_input(skip_capital=skip_capital)
+
+    # Configure the bot with the collected data (pass initial portfolio if available)
     print("\n" + "=" * 60)
     app.configure_settings(
         api_key=config_data["api_key"],
         secret=config_data["secret"],
         pair=config_data["pair"],
-        capital=config_data["capital"],
+        capital=config_data.get("capital") or 0.0,
         strategy_params=config_data["strategy_params"],
+        initial_portfolio=initial_portfolio,
     )
     print("=" * 60)
+
     # Launch interactive action menu
     app.action_menu()
+
+    # On exit, persist portfolio state to JSON
+    try:
+        if app.portfolio is not None:
+            state_out = {
+                "trades": app.portfolio.trade_history,
+                "usdt_balance": app.portfolio.usdt_balance,
+                "crypto_balance": app.portfolio.crypto_balance,
+            }
+            app.data_manager.save_state(state_out)
+            print(f"Saved portfolio state to {json_path}")
+    except Exception as e:
+        print(f"Warning: failed to save portfolio state: {e}")
 
 
 if __name__ == "__main__":

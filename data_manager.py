@@ -28,10 +28,14 @@ class DataManager:
         """
         self.json_path = json_path
 
-        # Create file if it does not exist
+        # Create file if it does not exist, initialize as structured state
         if not os.path.exists(self.json_path):
-            with open(self.json_path, "w") as f:
-                json.dump([], f, indent=4)
+            with open(self.json_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {"trades": [], "usdt_balance": None, "crypto_balance": None},
+                    f,
+                    indent=4,
+                )
 
     # ----------------------------------------------------------------------
 
@@ -59,18 +63,26 @@ class DataManager:
             list: The list of stored operations (or any JSON content).
         """
         try:
-            with open(self.json_path, "r") as f:
+            with open(self.json_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except json.JSONDecodeError:
             # Fix corrupted JSON file by resetting it
-            with open(self.json_path, "w") as f:
-                json.dump([], f, indent=4)
-            return []
+            with open(self.json_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {"trades": [], "usdt_balance": None, "crypto_balance": None},
+                    f,
+                    indent=4,
+                )
+            return {"trades": [], "usdt_balance": None, "crypto_balance": None}
         except FileNotFoundError:
             # Recreate file if deleted
-            with open(self.json_path, "w") as f:
-                json.dump([], f, indent=4)
-            return []
+            with open(self.json_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {"trades": [], "usdt_balance": None, "crypto_balance": None},
+                    f,
+                    indent=4,
+                )
+            return {"trades": [], "usdt_balance": None, "crypto_balance": None}
 
     # ----------------------------------------------------------------------
 
@@ -81,7 +93,7 @@ class DataManager:
         Args:
             data (list): List of dictionaries to write.
         """
-        with open(self.json_path, "w") as f:
+        with open(self.json_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
 
     # ----------------------------------------------------------------------
@@ -93,6 +105,46 @@ class DataManager:
         Args:
             trade (dict): A single trade record.
         """
-        data = self.load_data()
-        data.append(trade)
-        self.save_data(data)
+        state = self.load_data()
+        # If the file stored a list previously, convert to structured state
+        if isinstance(state, list):
+            state = {"trades": state, "usdt_balance": None, "crypto_balance": None}
+        trades = state.get("trades") or []
+        trades.append(trade)
+        state["trades"] = trades
+        self.save_data(state)
+
+    # ------------------------------------------------------------------
+
+    def charge_data(self) -> Dict[str, Any]:
+        """
+        Return structured state from the JSON file.
+
+        Returns a dict with keys: 'trades' (list), 'usdt_balance' (float|None),
+        'crypto_balance' (float|None).
+        """
+        state = self.load_data()
+        # Normalize to structured dict
+        if isinstance(state, list):
+            return {"trades": state, "usdt_balance": None, "crypto_balance": None}
+        # Ensure keys exist
+        return {
+            "trades": state.get("trades", []),
+            "usdt_balance": state.get("usdt_balance"),
+            "crypto_balance": state.get("crypto_balance"),
+        }
+
+    def save_state(self, state: Dict[str, Any]) -> None:
+        """
+        Save a structured state dict to the JSON file.
+
+        Expected keys: 'trades', 'usdt_balance', 'crypto_balance'.
+        """
+        # Normalize
+        out = {
+            "trades": state.get("trades", []),
+            "usdt_balance": state.get("usdt_balance"),
+            "crypto_balance": state.get("crypto_balance"),
+        }
+        with open(self.json_path, "w", encoding="utf-8") as f:
+            json.dump(out, f, indent=4)
